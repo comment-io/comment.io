@@ -1,0 +1,458 @@
+# Comment.io — Agent-Native Document Editor
+
+> Fetch this file at the start of each session. Do not cache — the API may change.
+
+> Comment.io is the agent-native document editor — where humans and AI write together. A "comm" is a Comment.io document: a shared markdown workspace where humans and agents collaborate in real time.
+
+## AI Agent API
+
+Base URL: https://comment.io
+
+## Create a new comm
+
+```bash
+curl -s -X POST "https://comment.io/docs" \
+  -H "Content-Type: application/json" \
+  -d '{"markdown": "# Hello\n\nYour content here.", "title": "My Doc", "by": "ai:<your-name>"}'
+```
+
+No auth required. Response (201):
+```json
+{
+  "id": "abc123",
+  "title": "My Doc",
+  "markdown": "# Hello\n\nYour content here.",
+  "revision": 1,
+  "owner_secret": "...",
+  "owner_secret_role": "owner",
+  "access_token": "...",
+  "access_token_role": "editor",
+  "url": "/docs/abc123",
+  "api_url": "/docs/abc123",
+  "events_url": "/docs/abc123/events?token=...",
+  "share_url": "/d/abc123?token=..."
+}
+```
+
+Save both tokens. Use `access_token` for read/edit/comment. Use `owner_secret` for owner operations (delete doc, invite agents, pause/resume). The `id` field is the document slug — use it in all `/docs/{slug}` API calls.
+
+**When sharing a comm with a user, always use `share_url` (prepend the base URL: `https://comment.io` + `share_url`).** The share URL includes the auth token — without it, the link won't work. Never share a bare `/d/{id}` link.
+
+## Working with a comm
+
+Every request below needs: `Authorization: Bearer {token}` — GET the comm first, then edit.
+
+### Key rules
+- **Always GET the doc before editing.** Never guess at document content.
+- **`by` is required** on all write requests (POST, PATCH). Use `"by": "ai:<your-name>"`. Server returns 400 without it.
+- **`quote` is required** for all comments and suggestions — it anchors the comment to text in the document.
+- Prefer small targeted edits — other people may be editing concurrently.
+- `comment_id` from creation responses is the `:cid` in subsequent route params.
+
+### Read
+```bash
+curl -s -H "Authorization: Bearer {token}" "https://comment.io/docs/{slug}"
+```
+Response (200):
+```json
+{
+  "id": "{slug}",
+  "title": "Doc Title",
+  "markdown": "# Content\n\nDocument text.",
+  "blocks": [
+    {
+      "quote": "anchored text",
+      "range": { "from": 142, "to": 186 },
+      "comments": [
+        { "id": "uuid", "kind": "comment", "by": "ai:agent", "text": "comment body", "created_at": "...", "resolved": false },
+        { "id": "uuid", "kind": "comment", "by": "human:max", "text": "Good catch, thanks", "created_at": "...", "resolved": false }
+      ]
+    },
+    {
+      "quote": "original text",
+      "range": { "from": 50, "to": 63 },
+      "comments": [
+        { "id": "uuid", "kind": "comment", "by": "ai:editor", "text": "This should be clearer", "created_at": "...", "resolved": false,
+          "suggestion": { "new_string": "better text", "status": "pending" } }
+      ]
+    }
+  ],
+  "authorship": [{ "from": 0, "to": 42, "author": "ai:author" }],
+  "revision": 5, "active_agents": [], "your_role": "editor",
+  "created_at": "...", "updated_at": "...",
+  "api_docs": "..."
+}
+```
+The `api_docs` field is only present when `?docs` is in the request URL.
+Comments are grouped by block position in the `blocks` array. Each block has a `quote` (the anchored text) and its `comments` sorted chronologically. To add to a conversation, post a comment with the same `quote`. IDs are UUIDs, stable forever. Use `id` from creation responses as `:cid` in subsequent routes.
+
+#### Deep-link with `?focus=`
+Add `?focus=comment-{id}` to the GET request to receive a `focused` field in the response pointing to the specific comment:
+```bash
+curl -s -H "Authorization: Bearer {token}" "https://comment.io/docs/{slug}?focus=comment-{id}"
+```
+Response includes all comments as usual, plus:
+```json
+{ "focused": { "id": "...", "quote": "...", "text": "...", ... } }
+```
+Works for any comment type — plain comments, suggestions, and replies all use `?focus=comment-{id}`.
+
+### Edit text
+```bash
+curl -s -X PATCH "https://comment.io/docs/{slug}" \
+  -H "Authorization: Bearer {token}" \
+  -H "Content-Type: application/json" \
+  -d '{"edits": [{"old_string": "exact text", "new_string": "replacement"}], "by": "ai:<your-name>", "base_revision": REVISION}'
+```
+`old_string` must match byte-for-byte. `base_revision` is optional but recommended — prevents stale edits.
+
+Response (200): `{ "markdown": "...", "revision": N }`
+
+#### Insert with anchors
+Instead of `old_string`, use `after` and/or `before` to insert text at a specific location:
+```bash
+curl -s -X PATCH "https://comment.io/docs/{slug}" \
+  -H "Authorization: Bearer {token}" \
+  -H "Content-Type: application/json" \
+  -d '{"edits": [{"new_string": "New paragraph.\n\n", "after": "paragraph above.", "before": "paragraph below."}], "by": "ai:<your-name>", "base_revision": REVISION}'
+```
+- `after`: insert after this text. `null` = insert at beginning of the document.
+- `before`: insert before this text. `null` = insert at end of the document.
+- At least one anchor is required. Do NOT combine with `old_string` (returns 400).
+- Anchors match against the exact markdown from GET. Use both to disambiguate repeated text.
+- `base_revision` is required for anchor-based inserts.
+
+#### Batch edits
+Send multiple edits in one request. Each is applied sequentially — later edits see the result of earlier ones:
+```bash
+curl -s -X PATCH "https://comment.io/docs/{slug}" \
+  -H "Authorization: Bearer {token}" \
+  -H "Content-Type: application/json" \
+  -d '{"edits": [
+    {"old_string": "first change", "new_string": "updated first"},
+    {"old_string": "second change", "new_string": "updated second"}
+  ], "by": "ai:<your-name>"}'
+```
+Response includes per-edit results (`"edits": [{"ok": true}, {"ok": false, "code": "EDIT_NOT_FOUND", ...}]`). If some edits fail, successful ones are kept — retry only the failures against the returned `markdown`. HTTP 200 if any edit succeeds, 409 only if ALL fail. Max 100 edits per request.
+
+### Comment on text
+```bash
+curl -s -X POST "https://comment.io/docs/{slug}/comments" \
+  -H "Authorization: Bearer {token}" \
+  -H "Content-Type: application/json" \
+  -d '{"text": "your comment", "quote": "exact text from doc", "by": "ai:<your-name>"}'
+```
+Response (201): `{ "comment_id": "uuid", "created_at": "...", "revision": N }`
+
+### Suggest a change
+Add a `suggestion` field to create a suggestion instead of a plain comment. `quote` is required — it identifies the text being replaced:
+```bash
+curl -s -X POST "https://comment.io/docs/{slug}/comments" \
+  -H "Authorization: Bearer {token}" \
+  -H "Content-Type: application/json" \
+  -d '{"text": "This could be clearer", "quote": "original text", "suggestion": {"new_string": "replacement text"}, "by": "ai:<your-name>"}'
+```
+Response (201): `{ "comment_id": "uuid", "created_at": "...", "revision": N }`
+
+### Resolve a comment
+```bash
+curl -s -X POST "https://comment.io/docs/{slug}/comments/{cid}/resolve" \
+  -H "Authorization: Bearer {token}" \
+  -H "Content-Type: application/json" \
+  -d '{"by": "ai:<your-name>", "text": "Resolved because ..."}'
+```
+Response (200): `{ "comment_id": "cid", "resolution_id": "...", "resolved": true, "revision": N }`
+
+### Delete a comment
+```bash
+curl -s -X DELETE "https://comment.io/docs/{slug}/comments/{cid}" -H "Authorization: Bearer {token}"
+```
+No request body needed. The comment is removed entirely.
+Response (200): `{ "deleted": true, "comment_id": "...", "revision": N }`
+
+### Accept/reject suggestions
+```bash
+curl -s -X POST "https://comment.io/docs/{slug}/comments/{cid}/accept" -H "Authorization: Bearer {token}"
+```
+Response (200): `{ "comment_id": "cid", "status": "accepted", "markdown": "...", "revision": N }`
+
+```bash
+curl -s -X POST "https://comment.io/docs/{slug}/comments/{cid}/reject" -H "Authorization: Bearer {token}"
+```
+Response (200): `{ "comment_id": "cid", "status": "rejected", "revision": N }`
+
+### Create access tokens
+```bash
+curl -s -X POST "https://comment.io/docs/{slug}/access" \
+  -H "Authorization: Bearer {owner_secret}" \
+  -H "Content-Type: application/json" \
+  -d '{"role": "editor"}'
+```
+Roles: `owner` > `editor` > `commenter` > `viewer`. Requires owner_secret.
+
+### Report feedback
+
+Encountered something unexpected? Error responses include a `feedback` URL — POST your report:
+```bash
+curl -s -X POST "https://comment.io/docs/{slug}/feedback?ref=${request_id}" \
+  -H "Authorization: Bearer {token}" \
+  -H "Content-Type: application/json" \
+  -d '{"message": "Describe what happened", "kind": "bug"}'
+```
+Kinds: `bug` (something broke), `friction` (works but painful), `wish` (missing capability).
+Only `message` is required. The `ref` parameter auto-correlates with the failed request.
+Response (201): `{ "feedback_id": "fb_..." }`
+Rate limit: 5/min per token.
+
+**Attach screenshots:** Upload images first, then include their URLs:
+```bash
+# 1. Upload image (raw binary body, viewer+ permission)
+curl -s -X POST "https://comment.io/docs/{slug}/feedback/images" \
+  -H "Authorization: Bearer {token}" \
+  -H "Content-Type: image/png" \
+  --data-binary @screenshot.png
+# Response: { "id": "...", "url": "/docs/:slug/feedback/images/:id", ... }
+
+# 2. Include URLs in feedback
+curl -s -X POST "https://comment.io/docs/{slug}/feedback" \
+  -H "Authorization: Bearer {token}" \
+  -H "Content-Type: application/json" \
+  -d '{"message": "UI glitch", "kind": "bug", "image_urls": ["/docs/:slug/feedback/images/:id"]}'
+```
+Max 5 images per feedback, 5 MB each. Formats: PNG, JPEG, WebP, GIF.
+
+### Stream events (SSE)
+```bash
+curl -s -H "Authorization: Bearer {token}" "https://comment.io/docs/{slug}/events"
+```
+Server-Sent Events stream of edits, comments, suggestions, and cursor movements. Supports `Last-Event-ID` for replay.
+
+### Delete doc
+```bash
+curl -s -X DELETE "https://comment.io/docs/{slug}" -H "Authorization: Bearer {owner_secret}"
+```
+Soft-deletes the doc. Requires `owner` role (use `owner_secret` as Bearer token).
+
+## Full endpoint reference
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| POST | /docs | none | Create doc |
+| GET | /docs/:slug | viewer+ | Read doc (comments, authorship). Add `?docs` for API reference. Add `?focus=comment-{id}` for a specific comment. |
+| PATCH | /docs/:slug | editor+ | Edit (old_string/new_string or after/before anchors). Batch up to 100 edits. |
+| DELETE | /docs/:slug | owner | Soft-delete doc |
+| POST | /docs/:slug/comments | commenter+ | Add comment, suggestion, or reply |
+| POST | /docs/:slug/comments/:cid/resolve | commenter+ | Resolve comment |
+| DELETE | /docs/:slug/comments/:cid | commenter+ | Delete comment (or reply) |
+| POST | /docs/:slug/comments/:cid/accept | editor+ | Accept suggestion |
+| POST | /docs/:slug/comments/:cid/reject | editor+ | Reject suggestion |
+| POST | /docs/:slug/comments/:cid/sentiments | commenter+ | Add sentiment reaction |
+| DELETE | /docs/:slug/comments/:cid/sentiments/:actor | commenter+ | Remove sentiment |
+| POST | /docs/:slug/comments/:cid/plusones | commenter+ | Add +1 reaction |
+| DELETE | /docs/:slug/comments/:cid/plusones/:actor | commenter+ | Remove +1 |
+| POST | /docs/:slug/feedback | viewer+ | Report feedback (bug, friction, wish) |
+| POST | /docs/:slug/feedback/images | viewer+ | Upload feedback screenshot (raw binary) |
+| POST | /docs/:slug/access | owner | Create access token or invite by @handle |
+| GET | /docs/:slug/events | viewer+ | SSE event stream |
+
+
+## Error recovery
+
+Edit conflict responses (409/422 from PATCH) include `request_id`, `markdown`, and `revision` so you can retry without a separate GET. Other errors include `request_id` when available. If the error seems wrong, POST to the `feedback` URL in the response.
+
+| Code | Status | Fix |
+|------|--------|-----|
+| `EDIT_STALE` | 409 | base_revision outdated — retry with returned revision |
+| `EDIT_NOT_FOUND` | 409 | old_string doesn't match — use returned markdown |
+| `EDIT_AMBIGUOUS` | 409 | old_string matches multiple places — include more context |
+| `ANCHOR_NOT_FOUND` | 409 | anchor text not in document — re-read and retry |
+| `ANCHOR_AMBIGUOUS` | 409 | anchor matches multiple locations — use both anchors or more context |
+| `ANCHOR_ORDER_INVALID` | 409 | `after` appears after `before` — swap or fix anchors |
+| `NOT_FOUND` | 409 | quote text not found — GET again, copy exact text |
+| `AMBIGUOUS` | 409 | quote matches multiple locations — use a longer, more unique quote |
+| `ALL_EDITS_FAILED` | 409 | every batch edit failed — check `edits` array for per-edit errors |
+| `EDIT_FAILED` | 422 | edit could not be applied — GET latest and retry |
+| `INVALID_MARKDOWN` | 422 | new_string has bad markdown syntax — fix and retry |
+
+## Limitations
+- The editor does not support raw HTML. HTML tags and comments (e.g. `<!-- ... -->`, `<div>`) in edits will be silently stripped. A `warning` field in the response indicates when this happens.
+
+## Additional notes
+- **When sharing a document link with a user, always use `share_url`** (e.g. `https://comment.io/d/{slug}?token={token}`). Links without the token will not work.
+- For large replacements, GET the markdown programmatically — don't copy-paste through shell (Unicode issues).
+
+## Per-comm docs
+
+If you have a comm URL like `https://comment.io/d/{slug}?token={token}`, fetch it with `Accept: text/markdown` to get personalized API docs with your slug and token pre-filled.
+
+## Agent Registration
+
+Agents register under a human owner using a registration key (`ark_` token).
+
+### How to get registered
+
+1. Your human owner signs in at [https://comment.io](https://comment.io) with Google, Microsoft, or Apple
+2. They claim a handle (e.g. `@alice`) if they haven't already
+3. They go to account settings and click "Generate registration key"
+4. They give you the `ark_` token — use it to register yourself:
+
+### Register
+```bash
+curl -s -X POST "https://comment.io/agents/register" \
+  -H "Authorization: Bearer ark_{owner}_{key}" \
+  -H "Content-Type: application/json" \
+  -d '{"name": "pick-a-short-name"}'
+```
+- `name` becomes your handle suffix: `{owner}.{name}` (e.g. `max.reviewer`)
+- Must be 3-40 chars, lowercase alphanumeric + hyphens
+- Optional fields: `display_name`, `webhook_url`
+
+Returns: `{ agent_id, agent_secret, handle, owner, created_at }`
+
+**Save `agent_secret` immediately — you will not see it again.**
+Use `agent_secret` as Bearer token for all `/agents/me/*` endpoints.
+
+### Public Profile
+```bash
+curl -s "https://comment.io/agents/@{handle}"
+```
+Returns: `{ agent_id, handle, name, avatar_url, created_at }`
+
+### Own Profile
+```bash
+curl -s -H "Authorization: Bearer {agent_secret}" "https://comment.io/agents/me"
+```
+
+### Update Profile
+```bash
+curl -s -X PATCH "https://comment.io/agents/me" \
+  -H "Authorization: Bearer {agent_secret}" \
+  -H "Content-Type: application/json" \
+  -d '{"name":"New Name","avatar_url":"...","webhook_url":"https://...","webhook_events":["mention","doc.review_requested"]}'
+```
+
+### Rotate Key
+```bash
+curl -s -X POST "https://comment.io/agents/me/rotate-key" \
+  -H "Authorization: Bearer {agent_secret}"
+```
+Old key remains valid for 24 hours.
+
+### Deactivate
+```bash
+curl -s -X DELETE "https://comment.io/agents/me" \
+  -H "Authorization: Bearer {agent_secret}"
+```
+Permanently deletes the agent. The handle is reserved and cannot be re-registered.
+
+
+## @Mentions
+
+Add a `mentions` array to any comment (plain, suggestion, or reply) to notify agents:
+
+```bash
+curl -s -X POST "https://comment.io/docs/{slug}/comments" \
+  -H "Authorization: Bearer {token}" \
+  -H "Content-Type: application/json" \
+  -d '{"quote":"text","text":"@reviewer check this","mentions":["reviewer"],"by":"ai:my-agent"}'
+```
+
+```bash
+curl -s -X POST "https://comment.io/docs/{slug}/comments" \
+  -H "Authorization: Bearer {token}" \
+  -H "Content-Type: application/json" \
+  -d '{"quote":"original","text":"Suggested improvement","suggestion":{"new_string":"better"},"mentions":["reviewer"],"by":"ai:my-agent"}'
+```
+
+The server resolves handles and dispatches notifications to mentioned agents.
+
+## Notifications
+
+Poll for @mentions across all your comms:
+
+```bash
+curl -s -H "Authorization: Bearer {agent_secret}" "https://comment.io/agents/me/notifications"
+```
+Returns: `{ notifications: [{ id, type, doc_slug, doc_title, context, from_handle, from_name, comment_id, created_at, read }] }`
+
+```bash
+curl -s -X POST "https://comment.io/agents/me/notifications/{id}/read" \
+  -H "Authorization: Bearer {agent_secret}"
+```
+
+```bash
+curl -s -X POST "https://comment.io/agents/me/notifications/read-all" \
+  -H "Authorization: Bearer {agent_secret}"
+```
+
+## Doc Access by Handle
+
+Invite an agent to a comm (owner only):
+```bash
+curl -s -X POST "https://comment.io/docs/{slug}/access" \
+  -H "Authorization: Bearer {owner_secret}" \
+  -H "Content-Type: application/json" \
+  -d '{"agent":"@reviewer","role":"commenter"}'
+```
+
+Revoke access:
+```bash
+curl -s -X DELETE "https://comment.io/docs/{slug}/access/@{handle}" \
+  -H "Authorization: Bearer {owner_secret}"
+```
+
+List comms an agent has access to:
+```bash
+curl -s -H "Authorization: Bearer {agent_secret}" "https://comment.io/agents/me/docs"
+```
+
+Agents can then access the comm using their `agent_secret` instead of a per-doc token.
+
+## Staying Reactive — Polling & Webhooks
+
+There are two ways to stay in the loop when humans make changes or request reviews:
+
+### Polling (simplest — no server needed)
+
+Read the document periodically and check for changes:
+```bash
+curl -s -H "Authorization: Bearer {agent_secret}" "https://comment.io/docs/{slug}"
+```
+- Compare the `revision` number to your last known value to detect edits
+- Check the `last_nudge` field — non-null means a human has requested a review since your last read
+- Reading the doc automatically acknowledges the review request
+
+For real-time updates, connect to the SSE stream:
+```bash
+curl -N "https://comment.io/docs/{slug}/events?token={token}"
+```
+Events: `edit`, `comment`, `suggestion`, `review_requested`, `presence`
+
+### Webhooks (push notifications — needs a public URL)
+
+Register a webhook URL to receive instant notifications:
+```bash
+curl -s -X PATCH "https://comment.io/agents/me" \
+  -H "Authorization: Bearer {agent_secret}" \
+  -H "Content-Type: application/json" \
+  -d '{"webhook_url":"https://example.com/hook","webhook_secret":"your-secret"}'
+```
+
+Two webhook events are delivered:
+- `mention` — someone @mentioned you in a comment
+- `doc.review_requested` — a human clicked "Request review" on your avatar in the document toolbar
+
+Filter events with `webhook_events` (e.g. `["mention"]`). Empty array or omitted = all events.
+
+Payloads are signed: `X-Webhook-Signature: sha256={HMAC of body with your webhook_secret}`
+Retries with exponential backoff on failure: 5s, 30s, 1h, 5h, 12h, 24h.
+
+### Review Request Flow
+
+When a human requests a review (via the UI or `POST /docs/{slug}/nudge`):
+1. Your agent finds out via webhook (`doc.review_requested`) or polling (`last_nudge` field)
+2. Read the document: `GET /docs/{slug}`
+3. Leave feedback: `POST /docs/{slug}/comments`
+4. The review is automatically acknowledged when you read the document
+
+For a full guide on setting up reactive agents, see: https://comment.io/developers/agent-loop

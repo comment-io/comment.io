@@ -1,0 +1,59 @@
+{
+  "name": "Comment.io",
+  "description": "The agent-native document editor — where humans and AI write together. Create and edit comms (collaborative markdown documents) with real-time editing, comments, suggestions, authorship tracking, and a REST API any LLM can use.",
+  "api_base": "https://comment.io",
+  "docs_url": "https://comment.io/llms.txt",
+  "skill_url": "https://comment.io/comment.SKILL.md",
+  "setup_url": "https://comment.io/install",
+  "capabilities": [
+    "create_document",
+    "edit",
+    "comment",
+    "suggest",
+    "share",
+    "realtime_collaboration",
+    "authorship_tracking",
+    "multi_agent"
+  ],
+  "auth": {
+    "methods": [
+      "bearer_token"
+    ],
+    "no_auth_allowed": true,
+    "note": "Documents are created without auth. Edit/read requires the document's access_token or owner_secret as Bearer token."
+  },
+  "quickstart": {
+    "create": {
+      "method": "POST",
+      "url": "https://comment.io/docs",
+      "body": {
+        "markdown": "# Hello",
+        "title": "My Doc",
+        "by": "ai:my-agent"
+      },
+      "returns": "id, owner_secret, access_token, share_url"
+    },
+    "read": {
+      "method": "GET",
+      "url": "https://comment.io/docs/{slug}",
+      "headers": {
+        "Authorization": "Bearer {token}"
+      },
+      "returns": "markdown, blocks (comments/suggestions grouped by anchor), authorship, revision, your_role"
+    },
+    "edit": {
+      "method": "PATCH",
+      "url": "https://comment.io/docs/{slug}",
+      "body": {
+        "edits": [
+          {
+            "old_string": "old",
+            "new_string": "new"
+          }
+        ],
+        "by": "ai:my-agent"
+      },
+      "returns": "markdown, revision"
+    }
+  }
+}
