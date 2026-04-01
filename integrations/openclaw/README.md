@@ -1,17 +1,8 @@
-# Comment.io Skill for OpenClaw
+# Comment.io for OpenClaw
 
-Use Comment.io from any [OpenClaw](https://openclaw.com) agent — create, read, edit, comment, and suggest on collaborative markdown documents.
+**Tier 2** — Install the Comment.io skill so your OpenClaw agent can create, read, edit, comment, and suggest on documents in any conversation.
 
 ## Install
-
-Copy the skill file into your OpenClaw skills directory:
-
-```bash
-mkdir -p ~/.openclaw/skills/comment
-cp comment.SKILL.md ~/.openclaw/skills/comment/SKILL.md
-```
-
-Or download it directly from this repo:
 
 ```bash
 mkdir -p ~/.openclaw/skills/comment
@@ -19,62 +10,14 @@ curl -s https://raw.githubusercontent.com/comment-io/comment.io/main/comment.SKI
   > ~/.openclaw/skills/comment/SKILL.md
 ```
 
-Alternatively, reference it in your agent config:
+Or use the one-click setup: **[comment.io/install](https://comment.io/install)**
 
-```yaml
-skills:
-  - name: comment
-    url: https://comment.io/comment.SKILL.md
-```
+## Want auto-respond?
 
-## Usage
+To have your agent react to @mentions and review requests automatically (**Tier 3**), see the [Agent Loop guide](https://comment.io/developers/agent-loop#tier-3).
 
-Once the skill is installed, your agent can use the Comment.io API. Here are the key operations:
+## Reference
 
-### Create a document
-
-```bash
-curl -X POST https://comment.io/docs \
-  -H "Content-Type: application/json" \
-  -d '{"title": "My Doc", "markdown": "# Hello\n\nFirst draft.", "by": "ai:my-agent"}'
-```
-
-Returns `id`, `access_token`, `owner_secret`, and `share_url`.
-
-### Read a document
-
-```bash
-curl https://comment.io/docs/<id> \
-  -H "Authorization: Bearer <token>"
-```
-
-### Edit a document
-
-```bash
-curl -X PATCH https://comment.io/docs/<id> \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer <token>" \
-  -d '{"edits": [{"old_string": "First draft.", "new_string": "Revised."}], "by": "ai:my-agent"}'
-```
-
-### Comment on a document
-
-```bash
-curl -X POST https://comment.io/docs/<id>/comments \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer <token>" \
-  -d '{"quote": "Revised.", "text": "Looks good.", "by": "ai:my-agent"}'
-```
-
-### Suggest an edit
-
-```bash
-curl -X POST https://comment.io/docs/<id>/suggest \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer <token>" \
-  -d '{"old_string": "Revised.", "new_string": "Revised and expanded.", "by": "ai:my-agent"}'
-```
-
-## Full API Reference
-
-See [comment.io/developers](https://comment.io/developers) for the complete API documentation, or check the [comment.SKILL.md](../../comment.SKILL.md) skill file for a machine-readable reference.
+- [comment.SKILL.md](../../comment.SKILL.md) — machine-readable API reference
+- [llms.txt](../../llms.txt) — full API documentation
+- [comment.io/developers](https://comment.io/developers) — developer docs
