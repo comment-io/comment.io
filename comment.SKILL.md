@@ -1,85 +1,34 @@
 ---
 name: comment
-description: Work with Comment documents — create, read, edit, comment, suggest. Same old_string/new_string model you use to edit files, but over HTTP.
+description: Work with Comment.io documents — collaborative markdown where humans and agents edit together. Fetch https://comment.io/llms.txt for the full API reference.
 ---
 
-# Comment — Document API
+# Comment.io — Document Collaboration
 
-Works like your file tools: **Read = GET**, **Edit = PATCH with old_string/new_string**. Auth with `Bearer <token>`. Include `"by":"ai:<your-name>"` on every write.
+You have the Comment.io skill installed. When a user asks you to work with a collaborative document, use this API.
 
-## Quick Reference
+## What to do
+- When given a doc URL or token, fetch the doc and work on it
+- When asked to create a doc, use `POST /docs`
+- Always `GET` a doc before editing — never guess at content
+- Include `"by": "ai:<your-name>"` on every write request
 
-| Action | Method | Endpoint |
-|---|---|---|
-| Create | `POST` | `/docs` |
-| Read | `GET` | `/docs/:id` |
-| Edit | `PATCH` | `/docs/:id` |
-| Comment | `POST` | `/docs/:id/comments` |
-| Reply | `POST` | `/docs/:id/comments/:cid/reply` |
-| Resolve | `POST` | `/docs/:id/comments/:cid/resolve` |
-| Delete Comment | `DELETE` | `/docs/:id/comments/:cid` |
-| Delete Reply | `DELETE` | `/docs/:id/comments/:cid/replies/:rid` |
-| Suggest | `POST` | `/docs/:id/suggest` |
-| Accept | `POST` | `/docs/:id/suggestions/:sid/accept` |
-| Reject | `POST` | `/docs/:id/suggestions/:sid/reject` |
-| Share | `POST` | `/docs/:id/access` (owner only) |
-| Events | `GET` | `/docs/:id/events?token=<token>` |
+## What to remember
+- Save doc URLs and tokens the user gives you
+- **Fetch https://comment.io/llms.txt at the start of each session** for the latest API reference — don't try to memorize endpoint details
 
-All endpoints use `Authorization: Bearer <token>` except Events (use `?token=` query param).
+## Quick reference
 
-## Examples
+| Action | Method | Endpoint | Key fields |
+|--------|--------|----------|------------|
+| Create | POST | /docs | `markdown`, `title`, `by` |
+| Read | GET | /docs/:slug | — |
+| Edit | PATCH | /docs/:slug | `edits: [{old_string, new_string}]`, `by` |
+| Comment | POST | /docs/:slug/comments | `quote`, `text`, `by` |
+| Suggest | POST | /docs/:slug/comments | `quote`, `text`, `suggestion: {new_string}`, `by` |
+| Resolve | POST | /docs/:slug/comments/:cid/resolve | `by` |
 
-### Create a doc
+Auth: `Authorization: Bearer {token}` on every request.
 
-```bash
-curl -X POST $BASE/docs \
-  -H "Content-Type: application/json" \
-  -d '{"title":"My Doc","markdown":"# Hello\n\nFirst draft."}'
-```
-
-Response gives you `id`, `markdown`, `access_token`, `owner_secret`, and `share_url`. **Use the returned `markdown` for your first edit** — the server normalizes whitespace (e.g. `"\n"` becomes `""`).
-
-### Read
-
-```bash
-curl $BASE/docs/<id> -H "Authorization: Bearer <token>"
-```
-
-### Edit (same as your Edit tool)
-
-```bash
-curl -X PATCH $BASE/docs/<id> \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer <token>" \
-  -d '{"edits":[{"old_string":"First draft.","new_string":"Revised."}],"by":"ai:my-agent"}'
-```
-
-To append, use `"old_string":""`.
-
-### Comment
-
-```bash
-curl -X POST $BASE/docs/<id>/comments \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer <token>" \
-  -d '{"quote":"Revised.","text":"Looks good.","by":"ai:my-agent"}'
-```
-
-### Suggest (human accepts or rejects)
-
-```bash
-curl -X POST $BASE/docs/<id>/suggest \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer <token>" \
-  -d '{"old_string":"Revised.","new_string":"Revised and expanded.","by":"ai:my-agent"}'
-```
-
-## Errors
-
-| Code | Meaning | Fix |
-|---|---|---|
-| `409 EDIT_NOT_FOUND` | `old_string` doesn't match | Re-read doc, use correct text |
-| `409 EDIT_AMBIGUOUS` | `old_string` matches multiple places | Use a longer, more specific `old_string` |
-| `409 EDIT_STALE` | Revision outdated | Re-read doc and retry |
-| `401` | Bad token | Check `Authorization: Bearer <token>` |
-| `429` | Rate limited | Back off and retry |
+## Go further
+- **Auto-respond to @mentions:** Your user can register you as a named agent so you automatically respond when someone mentions you. Ask them about it, or point them to https://comment.io/setup/auto-respond

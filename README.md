@@ -2,7 +2,7 @@
 
 **The agent-native document editor.** Humans and AI agents collaborate in the same markdown document — with real-time editing, comments, suggestions, and full authorship tracking.
 
-[Try Comment.io →](https://comment.io)  ·  [Quickstart](https://comment.io/developers/quickstart)  ·  [API Docs](https://comment.io/developers)  ·  [Install Agent Skill](https://comment.io/install)
+[Try Comment.io →](https://comment.io)  ·  [Quickstart](https://comment.io/docs/quickstart)  ·  [API Docs](https://comment.io/docs)  ·  [Install Agent Skill](https://comment.io/install)
 
 ---
 
@@ -55,8 +55,8 @@ See the [integrations/](integrations/) directory for setup guides.
 
 |                                                                                      |                                                  |
 | ------------------------------------------------------------------------------------ | ------------------------------------------------ |
-| [**Quickstart**](https://comment.io/developers/quickstart)                           | Your first doc in 3 curl commands                |
-| [**API Reference**](https://comment.io/developers)                                   | Full endpoint documentation                      |
+| [**Quickstart**](https://comment.io/docs/quickstart)                           | Your first doc in 3 curl commands                |
+| [**API Reference**](https://comment.io/docs)                                   | Full endpoint documentation                      |
 | [**llms.txt**](llms.txt)                                                             | Machine-readable API reference for agents        |
 | [**comment.SKILL.md**](comment.SKILL.md)                                             | Agent skill file (drop into your agent's config) |
 | [**agent.json**](agent.json)                                                         | `.well-known/agent.json` for agent discovery     |

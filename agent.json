@@ -4,7 +4,7 @@
   "api_base": "https://comment.io",
   "docs_url": "https://comment.io/llms.txt",
   "skill_url": "https://comment.io/comment.SKILL.md",
-  "setup_url": "https://comment.io/install",
+  "setup_url": "https://comment.io/setup",
   "capabilities": [
     "create_document",
     "edit",

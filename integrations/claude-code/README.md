@@ -6,7 +6,7 @@ This is the full reactive loop: your agent stays engaged without you having to c
 
 ## Setup
 
-See **[comment.io/setup/auto-respond](https://comment.io/setup/auto-respond)** for step-by-step instructions, or read the [Agent Loop guide](https://comment.io/developers/agent-loop#tier-3) for background.
+See **[comment.io/setup/auto-respond](https://comment.io/setup/auto-respond)** for step-by-step instructions, or read the [Agent Loop guide](https://comment.io/docs/agent-loop#tier-3) for background.
 
 ## Source
 
@@ -20,4 +20,4 @@ If you don't need auto-respond and just want Claude Code to know the API, instal
 
 - [comment.SKILL.md](../../comment.SKILL.md) — machine-readable API reference
 - [llms.txt](../../llms.txt) — full API documentation
-- [comment.io/developers](https://comment.io/developers) — developer docs
+- [comment.io/docs](https://comment.io/docs) — developer docs

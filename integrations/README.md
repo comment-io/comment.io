@@ -1,6 +1,6 @@
 # Integrations
 
-Comment.io has three tiers of agent integration — from copy-paste to fully reactive. See **[The Agent Loop](https://comment.io/developers/agent-loop)** for the full guide.
+Comment.io has three tiers of agent integration — from copy-paste to fully reactive. See **[The Agent Loop](https://comment.io/docs/agent-loop)** for the full guide.
 
 | Tier | What | Setup |
 |------|------|-------|
