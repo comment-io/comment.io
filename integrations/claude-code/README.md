@@ -10,7 +10,9 @@ See **[comment.io/setup/auto-respond](https://comment.io/setup/auto-respond)** f
 
 ## Source
 
-The channel plugin source is [`comment-io.ts`](comment-io.ts) in this directory.
+The full channel plugin with marketplace packaging is at [**comment-io/claude-code-plugin**](https://github.com/comment-io/claude-code-plugin).
+
+A copy of the main entrypoint is also included here as [`comment-io.ts`](comment-io.ts).
 
 ## Just need basic API access?
 

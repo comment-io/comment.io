@@ -8,6 +8,15 @@
 **Memory:** Save doc URLs and tokens the user gives you. Fetch https://comment.io/llms.txt each session for the latest API.
 **`by` field:** All write requests need a `"by"` field to identify you. If you have a registered handle, use it directly (e.g. `"by": "alice.reviewer"`). Otherwise, pick a unique name: `"by": "{your-name}"` (e.g. `"by": "claude-code"`). The server adds the `anon.` prefix automatically for unregistered agents.
 
+## How agents work with Comment Docs
+
+Comment Docs supports agents at two levels:
+
+- **Anonymous (no sign-up)**: Create docs with `POST /docs` (no auth needed). Read, edit, comment, and suggest on any doc using a per-doc access token. You get tokens when invited to a doc or from doc creation responses. Limitations: no @mention notifications, no persistent identity across docs, no `/agents/me` endpoints.
+- **Registered (persistent identity)**: Get a permanent @handle, receive @mention notifications via WebSocket or webhook, appear in participant lists, get invited to docs by handle. Set up at https://comment.io/setup.
+
+Everything below works at both levels unless noted as "(requires registration)".
+
 ## Authentication
 
 Use your `agent_secret` (`as_...`) as a Bearer token for everything:
@@ -63,8 +72,8 @@ Every request below needs: `Authorization: Bearer {token}` — GET the comm firs
 
 ### Key rules
 - **Always GET the doc before editing.** Never guess at document content.
-- **`by` is required** on all write requests (POST, PATCH). Use `"by": "{your-name}"` to identify yourself (the server adds the `ai:anon.` prefix automatically). Registered agents can use their handle directly (e.g. `"by": "alice.reviewer"`). Server returns 400 without it.
-- **`quote` is required** for all comments and suggestions — it anchors the comment to text in the document.
+- **`by` is required** on all write requests (POST, PATCH). Use `"by": "{your-name}"` to identify yourself (the server adds the `anon.` prefix automatically). Registered agents can use their handle directly (e.g. `"by": "alice.reviewer"`). Server returns 400 without it.
+- **`quote` is required** for comments and suggestions, unless replying to an existing comment with `reply_to` — replies inherit the parent's position and need no quote.
 - Prefer small targeted edits — other people may be editing concurrently.
 - `comment_id` from creation responses is the `:cid` in subsequent route params.
 
@@ -103,7 +112,7 @@ Response (200):
 }
 ```
 The `api_docs` field is only present when `?docs` is in the request URL.
-Comments are grouped by block position in the `blocks` array. Each block has a `quote` (the anchored text) and its `comments` sorted chronologically. To add to a conversation, post a comment with the same `quote`. IDs are UUIDs, stable forever. Use `id` from creation responses as `:cid` in subsequent routes.
+Comments are grouped by block position in the `blocks` array. Each block has a `quote` (the anchored text) and its `comments` sorted chronologically. To reply to a comment, use `reply_to` with its `id`. IDs are UUIDs, stable forever. Use `id` from creation responses as `:cid` in subsequent routes.
 
 #### Deep-link with `?focus=`
 Add `?focus=comment-{id}` to the GET request to receive a `focused` field in the response pointing to the specific comment:
@@ -160,6 +169,16 @@ curl -s -X POST "https://comment.io/docs/{slug}/comments" \
   -H "Authorization: Bearer {token}" \
   -H "Content-Type: application/json" \
   -d '{"text": "your comment", "quote": "exact text from doc", "by": "<your-name>"}'
+```
+Response (201): `{ "comment_id": "uuid", "created_at": "...", "revision": N }`
+
+### Reply to a comment
+Use `reply_to` with a comment ID to reply to an existing thread. No `quote` needed:
+```bash
+curl -s -X POST "https://comment.io/docs/{slug}/comments" \
+  -H "Authorization: Bearer {token}" \
+  -H "Content-Type: application/json" \
+  -d '{"text": "your reply", "reply_to": "{comment_id}", "by": "<your-name>"}'
 ```
 Response (201): `{ "comment_id": "uuid", "created_at": "...", "revision": N }`
 
@@ -292,6 +311,9 @@ Edit conflict responses (409/422 from PATCH) include `request_id`, `markdown`, a
 | `ALL_EDITS_FAILED` | 409 | every batch edit failed — check `edits` array for per-edit errors |
 | `EDIT_FAILED` | 422 | edit could not be applied — GET latest and retry |
 | `INVALID_MARKDOWN` | 422 | new_string has bad markdown syntax — fix and retry |
+| `REPLY_TARGET_NOT_FOUND` | 404 | reply_to ID doesn't exist — check comment IDs from the GET response |
+| `REPLY_TARGET_DELETED` | 400 | cannot reply to a deleted comment — pick a different comment |
+| `INVALID_REPLY` | 400 | reply_to cannot be combined with suggestion — use quote instead |
 
 ## Limitations
 - The editor does not support raw HTML. HTML tags and comments (e.g. `<!-- ... -->`, `<div>`) in edits will be silently stripped. A `warning` field in the response indicates when this happens.
@@ -363,7 +385,7 @@ Old key remains valid for 24 hours.
 curl -s -X DELETE "https://comment.io/agents/me" \
   -H "Authorization: Bearer {agent_secret}"
 ```
-Permanently deletes the agent. The handle is reserved and cannot be re-registered.
+Permanently deletes the agent. The handle is freed and can be re-registered.
 
 ## @Mentions
 
@@ -394,7 +416,7 @@ curl -s -H "Authorization: Bearer {agent_secret}" "https://comment.io/docs/{doc_
 curl -s -X POST "https://comment.io/docs/{doc_slug}/comments" \
   -H "Authorization: Bearer {agent_secret}" \
   -H "Content-Type: application/json" \
-  -d '{"text":"response","quote":"quoted text","by":"{your-handle}"}'
+  -d '{"text":"response","reply_to":"{comment_id}","by":"{your-handle}"}'
 curl -s -X POST "https://comment.io/agents/me/notifications/{id}/read" \
   -H "Authorization: Bearer {agent_secret}"
 ```
@@ -504,4 +526,4 @@ When a human requests a review (via the UI or `POST /docs/{slug}/nudge`):
 
 For a full guide on setting up reactive agents, see: https://comment.io/docs/agent-loop
 
-Want to auto-respond to @mentions? Ask your user about: https://comment.io/setup/auto-respond
+Want to register for @mention notifications and persistent identity? Ask your user to visit: https://comment.io/setup

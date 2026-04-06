@@ -8,6 +8,8 @@ import {
 import { readFileSync, existsSync } from 'fs';
 import { join } from 'path';
 import { homedir } from 'os';
+import WebSocket from 'ws';
+import { MCP_TOOLS } from '../shared/mcp-tools.js';
 
 // ---------------------------------------------------------------------------
 // Configuration
@@ -70,7 +72,7 @@ async function api(method: string, path: string, body?: unknown): Promise<unknow
 const server = new Server(
   {
     name: 'comment-io',
-    version: '0.1.0',
+    version: '0.2.0',
   },
   {
     capabilities: {
@@ -79,21 +81,14 @@ const server = new Server(
     },
     instructions: [
       'You are connected to Comment.io — a collaborative markdown editor.',
-      'You will receive @mention notifications as channel events.',
-      'Each event includes meta fields: doc_slug, doc_title, notification_id, comment_id, from, and type.',
+      'You will receive @mention notifications in real-time via WebSocket.',
+      'Each channel event includes meta fields: doc_slug, doc_title, notification_id, comment_id, from, and type.',
       '',
       'Available tools:',
-      '  read_doc      — Read a document by slug',
-      '  edit_doc      — Edit a document (search & replace)',
-      '  comment       — Leave a comment on a document',
-      '  suggest       — Make a suggestion (proposed edit)',
-      '  reply         — Reply to a comment or suggestion',
-      '  check_mentions — Manually check for new @mentions',
-      '  list_docs     — List documents you have access to',
-      '  acknowledge   — Mark a notification as read',
+      ...MCP_TOOLS.map(t => `  ${t.name} — ${t.description}`),
       '',
-      'When you receive a mention, read the document first to understand context,',
-      'then respond with a reply, comment, suggestion, or edit as appropriate.',
+      'When you receive a mention, use read_doc first to understand context, then respond appropriately.',
+      'Full API reference: ' + baseUrl + '/llms.txt',
     ].join('\n'),
   },
 );
@@ -102,101 +97,7 @@ const server = new Server(
 // Tools
 // ---------------------------------------------------------------------------
 
-const TOOLS = [
-  {
-    name: 'read_doc',
-    description: 'Read a Comment.io document by slug. Returns full markdown, comments, and suggestions.',
-    inputSchema: {
-      type: 'object' as const,
-      properties: { slug: { type: 'string', description: 'Document slug' } },
-      required: ['slug'],
-    },
-  },
-  {
-    name: 'edit_doc',
-    description: 'Edit a document using search & replace.',
-    inputSchema: {
-      type: 'object' as const,
-      properties: {
-        slug: { type: 'string', description: 'Document slug' },
-        old_string: { type: 'string', description: 'Text to find' },
-        new_string: { type: 'string', description: 'Replacement text' },
-      },
-      required: ['slug', 'old_string', 'new_string'],
-    },
-  },
-  {
-    name: 'comment',
-    description: 'Leave a comment on a document, anchored to a quoted passage.',
-    inputSchema: {
-      type: 'object' as const,
-      properties: {
-        slug: { type: 'string', description: 'Document slug' },
-        quote: { type: 'string', description: 'Text passage to anchor the comment to' },
-        text: { type: 'string', description: 'Comment body' },
-        mentions: { type: 'array', items: { type: 'string' }, description: 'Handles to @mention' },
-      },
-      required: ['slug', 'quote', 'text'],
-    },
-  },
-  {
-    name: 'suggest',
-    description: 'Make a suggestion (proposed edit) on a document.',
-    inputSchema: {
-      type: 'object' as const,
-      properties: {
-        slug: { type: 'string', description: 'Document slug' },
-        old_string: { type: 'string', description: 'Text to replace' },
-        new_string: { type: 'string', description: 'Suggested replacement' },
-        mentions: { type: 'array', items: { type: 'string' }, description: 'Handles to @mention' },
-      },
-      required: ['slug', 'old_string', 'new_string'],
-    },
-  },
-  {
-    name: 'reply',
-    description: 'Reply to a comment or suggestion thread.',
-    inputSchema: {
-      type: 'object' as const,
-      properties: {
-        slug: { type: 'string', description: 'Document slug' },
-        comment_id: { type: 'string', description: 'ID of the comment or suggestion to reply to' },
-        text: { type: 'string', description: 'Reply body' },
-        mentions: { type: 'array', items: { type: 'string' }, description: 'Handles to @mention' },
-      },
-      required: ['slug', 'comment_id', 'text'],
-    },
-  },
-  {
-    name: 'check_mentions',
-    description: 'Manually check for new @mention notifications.',
-    inputSchema: {
-      type: 'object' as const,
-      properties: {},
-    },
-  },
-  {
-    name: 'list_docs',
-    description: 'List documents this agent has access to.',
-    inputSchema: {
-      type: 'object' as const,
-      properties: {},
-    },
-  },
-  {
-    name: 'acknowledge',
-    description: 'Mark a notification as read.',
-    inputSchema: {
-      type: 'object' as const,
-      properties: {
-        notification_id: { type: 'string', description: 'Notification ID to acknowledge' },
-      },
-      required: ['notification_id'],
-    },
-  },
-];
-
-server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools: TOOLS }));
+server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools: MCP_TOOLS }));
 
 server.setRequestHandler(CallToolRequestSchema, async (req) => {
   const { name, arguments: args = {} } = req.params;
@@ -242,8 +143,12 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
       }
 
       case 'check_mentions': {
-        const notifications = await api('GET', '/agents/me/notifications');
-        return { content: [{ type: 'text', text: JSON.stringify(notifications, null, 2) }] };
+        const data = await api('GET', '/agents/me/notifications') as {
+          notifications: Notification[];
+          total: number;
+          unread_count: number;
+        };
+        return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
       }
 
       case 'list_docs': {
@@ -267,54 +172,124 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
 });
 
 // ---------------------------------------------------------------------------
-// Notification polling
+// Notification types
 // ---------------------------------------------------------------------------
-
-const POLL_INTERVAL_MS = 30_000;
 
 interface Notification {
   id: string;
+  type: string;
   doc_slug: string;
   doc_title: string;
-  comment_id?: string;
+  comment_id?: string | null;
   from_handle: string;
   from_name: string;
   context: string;
-  type: string;
+  access_token?: string;
 }
 
-async function pollNotifications(): Promise<void> {
-  try {
-    const data = (await api('GET', '/agents/me/notifications')) as Notification[];
-    if (!Array.isArray(data)) return;
+// ---------------------------------------------------------------------------
+// WebSocket notification stream
+// ---------------------------------------------------------------------------
 
-    for (const ntf of data) {
-      await server.notification({
-        method: 'notifications/claude/channel',
-        params: {
-          content: `You were @mentioned in "${ntf.doc_title}" by ${ntf.from_name}: ${ntf.context}`,
-          meta: {
-            doc_slug: ntf.doc_slug,
-            doc_title: ntf.doc_title,
-            notification_id: ntf.id,
-            comment_id: ntf.comment_id ?? '',
-            from: ntf.from_handle,
-            type: ntf.type,
-          },
-        },
-      });
+const seenIds = new Set<string>();
 
-      // Auto-acknowledge after pushing
-      try {
-        await api('POST', `/agents/me/notifications/${ntf.id}/read`);
-      } catch {
-        // non-fatal — will retry next cycle
-      }
-    }
-  } catch (err) {
-    // Log to stderr (stdout is reserved for MCP protocol)
-    console.error('[comment-io] poll error:', err instanceof Error ? err.message : err);
+async function emitNotification(ntf: Notification): Promise<void> {
+  if (seenIds.has(ntf.id)) return;
+  seenIds.add(ntf.id);
+
+  // Cap the set size to avoid unbounded growth — keep newest 500
+  if (seenIds.size > 1000) {
+    const entries = [...seenIds];
+    seenIds.clear();
+    for (const id of entries.slice(-500)) seenIds.add(id);
   }
+
+  await server.notification({
+    method: 'notifications/claude/channel',
+    params: {
+      content: `You were @mentioned in "${ntf.doc_title}" by ${ntf.from_name}: ${ntf.context}`,
+      meta: {
+        doc_slug: ntf.doc_slug,
+        doc_title: ntf.doc_title,
+        notification_id: ntf.id,
+        comment_id: ntf.comment_id ?? '',
+        from: ntf.from_handle,
+        type: ntf.type,
+      },
+    },
+  });
+
+  // Auto-acknowledge after pushing
+  try {
+    await api('POST', `/agents/me/notifications/${ntf.id}/read`);
+  } catch {
+    // non-fatal — will be marked read on next catchup
+  }
+}
+
+function connectWebSocket(): void {
+  const wsUrl = baseUrl.replace(/^http/, 'ws') + '/agents/me/notifications/connect';
+  let attempt = 0;
+  let pingInterval: ReturnType<typeof setInterval> | null = null;
+
+  function connect() {
+    const ws = new WebSocket(wsUrl, {
+      headers: { Authorization: `Bearer ${agentSecret}` },
+    });
+
+    ws.on('open', () => {
+      attempt = 0;
+      console.error('[comment-io] WebSocket connected');
+
+      // Keepalive ping every 30s
+      pingInterval = setInterval(() => {
+        if (ws.readyState === WebSocket.OPEN) {
+          ws.send(JSON.stringify({ type: 'ping' }));
+        }
+      }, 30_000);
+    });
+
+    ws.on('message', async (data: WebSocket.Data) => {
+      try {
+        const msg = JSON.parse(data.toString());
+
+        if (msg.type === 'notification_catchup') {
+          const notifications = msg.notifications as Notification[];
+          for (const ntf of notifications) {
+            await emitNotification(ntf);
+          }
+        } else if (msg.type === 'notification_appended') {
+          await emitNotification(msg.notification as Notification);
+        }
+        // notification_read, notifications_all_read, pong — ignore
+      } catch (err) {
+        console.error('[comment-io] WS message error:', err instanceof Error ? err.message : err);
+      }
+    });
+
+    ws.on('close', (code: number, reason: Buffer) => {
+      if (pingInterval) clearInterval(pingInterval);
+      pingInterval = null;
+
+      const reasonStr = reason.toString();
+      console.error(`[comment-io] WebSocket closed: ${code} ${reasonStr}`);
+      scheduleReconnect();
+    });
+
+    ws.on('error', (err: Error) => {
+      console.error('[comment-io] WebSocket error:', err.message);
+      // on('close') fires after this, which handles cleanup + reconnect
+    });
+  }
+
+  function scheduleReconnect() {
+    const delay = Math.min(1000 * Math.pow(2, attempt), 60_000) + Math.random() * 1000;
+    attempt++;
+    console.error(`[comment-io] Reconnecting in ${Math.round(delay)}ms (attempt ${attempt})`);
+    setTimeout(connect, delay);
+  }
+
+  connect();
 }
 
 // ---------------------------------------------------------------------------
@@ -325,16 +300,10 @@ async function main(): Promise<void> {
   const transport = new StdioServerTransport();
   await server.connect(transport);
 
-  console.error('[comment-io] Channel server started');
+  console.error('[comment-io] Channel server started (WebSocket mode)');
 
-  // Start polling loop
-  const poll = async () => {
-    while (true) {
-      await pollNotifications();
-      await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS));
-    }
-  };
-  poll();
+  // Start WebSocket connection for real-time notifications
+  connectWebSocket();
 }
 
 main().catch((err) => {
