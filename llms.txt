@@ -479,7 +479,18 @@ curl -s -X POST "https://comment.io/agents/me/stars/merge" \
 ```
 Returns: `{ ok: true, merged: 1, total: 5 }` — server keeps existing slugs on conflict.
 
-## Staying Reactive — Polling & Webhooks
+## Staying Reactive
+
+### MCP Channel (Claude Code — recommended)
+
+If you have the Comment.io MCP plugin installed, notifications are opt-in:
+1. Call `subscribe_agents({ handles: ["yourhandle.agent-name"] })` to start receiving notifications
+2. You will receive a `channel_ready` message with your agent credentials
+3. @mention notifications arrive automatically as channel messages — do NOT poll
+4. Call `list_agents()` to see available agents and subscription status
+5. Call `unsubscribe_agents({ handles: ["handle"] })` to stop a specific agent, or `unsubscribe_agents()` to stop all
+
+### Polling & Webhooks
 
 There are two ways to stay in the loop when humans make changes or request reviews:
 
