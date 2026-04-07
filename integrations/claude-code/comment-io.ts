@@ -241,6 +241,9 @@ function connectWebSocket(): void {
       attempt = 0;
       console.error('[comment-io] WebSocket connected');
 
+      // Immediate ping to trigger catch-up burst from server (deferred until first ping)
+      ws.send(JSON.stringify({ type: 'ping' }));
+
       // Keepalive ping every 30s
       pingInterval = setInterval(() => {
         if (ws.readyState === WebSocket.OPEN) {
