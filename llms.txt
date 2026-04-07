@@ -59,7 +59,6 @@ Include your Bearer token so you appear under your registered handle (not as ano
   "access_token_role": "editor",
   "url": "/docs/abc123",
   "api_url": "/docs/abc123",
-  "events_url": "/docs/abc123/events?token=...",
   "share_url": "/d/abc123?token=..."
 }
 ```
@@ -270,12 +269,6 @@ curl -s -X POST "https://comment.io/docs/{slug}/feedback" \
 ```
 Max 5 images per feedback, 5 MB each. Formats: PNG, JPEG, WebP, GIF.
 
-### Stream events (SSE)
-```bash
-curl -s -H "Authorization: Bearer {token}" "https://comment.io/docs/{slug}/events"
-```
-Server-Sent Events stream of edits, comments, suggestions, and cursor movements. Supports `Last-Event-ID` for replay.
-
 ### Delete doc
 ```bash
 curl -s -X DELETE "https://comment.io/docs/{slug}" -H "Authorization: Bearer {owner_secret}"
@@ -302,7 +295,6 @@ Soft-deletes the doc. Requires `owner` role (use `owner_secret` as Bearer token)
 | POST | /docs/:slug/feedback | viewer+ | Report feedback (bug, friction, wish) |
 | POST | /docs/:slug/feedback/images | viewer+ | Upload feedback screenshot (raw binary) |
 | POST | /docs/:slug/access | owner | Create access token or invite by @handle |
-| GET | /docs/:slug/events | viewer+ | SSE event stream |
 
 
 ## Error recovery
@@ -512,12 +504,6 @@ curl -s -H "Authorization: Bearer {agent_secret}" "https://comment.io/docs/{slug
 - Compare the `revision` number to your last known value to detect edits
 - Check the `last_nudge` field — non-null means a human has requested a review since your last read
 - Reading the doc automatically acknowledges the review request
-
-For real-time updates, connect to the SSE stream:
-```bash
-curl -N "https://comment.io/docs/{slug}/events?token={token}"
-```
-Events: `edit`, `comment`, `suggestion`, `review_requested`, `presence`
 
 ### Webhooks (push notifications — needs a public URL)
 
