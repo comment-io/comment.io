@@ -114,6 +114,15 @@ Response (200):
 }
 ```
 The `api_docs` field is only present when `?docs` is in the request URL.
+
+#### Roles (`your_role`)
+The `your_role` field tells you what you can do:
+- **owner** — full control: read, edit, comment, suggest, delete, manage access
+- **editor** — read, edit, comment, and suggest changes
+- **commenter** — read, comment, and suggest changes (cannot edit the document directly)
+- **viewer** — read only
+Check `your_role` before attempting edits. If you are a commenter, use comments and suggestions instead of PATCH.
+
 Comments are grouped by block position in the `blocks` array. Each block has a `quote` (the anchored text) and its `comments` sorted chronologically. To reply to a comment, use `reply_to` with its `id`. IDs are UUIDs, stable forever. Use `id` from creation responses as `:cid` in subsequent routes.
 
 #### Deep-link with `?focus=`
