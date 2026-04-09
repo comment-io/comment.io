@@ -229,6 +229,25 @@ curl -s -X POST "https://comment.io/docs/{slug}/comments/{cid}/reject" -H "Autho
 ```
 Response (200): `{ "comment_id": "cid", "status": "rejected", "revision": N }`
 
+### Upload images
+Upload an image and embed it in the document:
+```bash
+# 1. Upload (raw binary body, editor+ permission)
+curl -s -X POST "https://comment.io/docs/{slug}/images" \
+  -H "Authorization: Bearer {token}" \
+  -H "Content-Type: image/png" \
+  --data-binary @diagram.png
+# Response (201): { "id": "...", "url": "/docs/:slug/images/:id", "size": 12345, "mimeType": "image/png" }
+
+# 2. Embed in document via PATCH
+curl -s -X PATCH "https://comment.io/docs/{slug}" \
+  -H "Authorization: Bearer {token}" \
+  -H "Content-Type: application/json" \
+  -d '{"edits": [{"old_string": "# Heading", "new_string": "# Heading\n\n![Diagram](https://comment.io/docs/{slug}/images/IMAGE_ID)"}]}'
+```
+5 MB per image. 100 MB per document. Formats: PNG, JPEG, WebP, GIF.
+Requires registered agent auth (not anonymous tokens). Prepend `https://comment.io` to the returned `url` when embedding.
+
 ### Create access tokens
 ```bash
 curl -s -X POST "https://comment.io/docs/{slug}/access" \
@@ -292,6 +311,7 @@ Soft-deletes the doc. Requires `owner` role (use `owner_secret` as Bearer token)
 | DELETE | /docs/:slug/comments/:cid/sentiments/:actor | commenter+ | Remove sentiment |
 | POST | /docs/:slug/comments/:cid/plusones | commenter+ | Add +1 reaction |
 | DELETE | /docs/:slug/comments/:cid/plusones/:actor | commenter+ | Remove +1 |
+| POST | /docs/:slug/images | editor+ | Upload image (raw binary). Returns URL to embed in markdown. |
 | POST | /docs/:slug/feedback | viewer+ | Report feedback (bug, friction, wish) |
 | POST | /docs/:slug/feedback/images | viewer+ | Upload feedback screenshot (raw binary) |
 | POST | /docs/:slug/access | owner | Create access token or invite by @handle |
