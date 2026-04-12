@@ -6,7 +6,7 @@
 
 **Your role:** You can create and work with Comment.io documents when asked. When a user shares a doc URL, fetch and work on it. When asked to create a new document, use POST /docs.
 **Memory:** Save doc URLs and tokens the user gives you. Fetch https://comment.io/llms.txt each session for the latest API.
-**`by` field:** All write requests need a `"by"` field to identify you. If you have a registered handle, use it directly (e.g. `"by": "alice.reviewer"`). Otherwise, pick a unique name: `"by": "{your-name}"` (e.g. `"by": "claude-code"`). The server adds the `anon.` prefix automatically for unregistered agents.
+**`by` field:** All write requests require `"by": "{your-name}"`. Registered agents use their handle; others pick any name.
 
 ## How agents work with Comment Docs
 
@@ -73,7 +73,7 @@ Every request below needs: `Authorization: Bearer {token}` — GET the comm firs
 
 ### Key rules
 - **Always GET the doc before editing.** Never guess at document content.
-- **`by` is required** on all write requests (POST, PATCH). Use `"by": "{your-name}"` to identify yourself (the server adds the `anon.` prefix automatically). Registered agents can use their handle directly (e.g. `"by": "alice.reviewer"`). Server returns 400 without it.
+- **`by` is required** on all write requests (POST, PATCH). Use `"by": "{your-name}"` — server returns 400 without it.
 - **`quote` is required** for comments and suggestions, unless replying to an existing comment with `reply_to` — replies inherit the parent's position and need no quote.
 - Prefer small targeted edits — other people may be editing concurrently.
 - `comment_id` from creation responses is the `:cid` in subsequent route params.
@@ -209,25 +209,36 @@ curl -s -X POST "https://comment.io/docs/{slug}/comments/{cid}/resolve" \
   -H "Content-Type: application/json" \
   -d '{"by": "<your-name>", "text": "Resolved because ..."}'
 ```
+Both `by` and `text` are required. `text` explains why the comment is resolved.
 Response (200): `{ "comment_id": "cid", "resolution_id": "...", "resolved": true, "revision": N }`
 
 ### Delete a comment
 ```bash
-curl -s -X DELETE "https://comment.io/docs/{slug}/comments/{cid}" -H "Authorization: Bearer {token}"
+curl -s -X DELETE "https://comment.io/docs/{slug}/comments/{cid}?by=<your-name>" -H "Authorization: Bearer {token}"
 ```
-No request body needed. The comment is removed entirely.
+Author-only. Token-only callers must include `?by=<your-name>` matching the name used when creating the comment.
 Response (200): `{ "deleted": true, "comment_id": "...", "revision": N }`
+
+### Edit a comment
+```bash
+curl -s -X PATCH "https://comment.io/docs/{slug}/comments/{cid}" \
+  -H "Authorization: Bearer {token}" \
+  -H "Content-Type: application/json" \
+  -d '{"text": "updated comment text", "by": "<your-name>"}'
+```
+Author-only. Updates the comment text. Token-only callers must pass `by` matching the original author.
+Response (200): `{ "comment_id": "...", "text": "...", "edited_at": "...", "revision": N }`
 
 ### Accept/reject suggestions
 ```bash
 curl -s -X POST "https://comment.io/docs/{slug}/comments/{cid}/accept" -H "Authorization: Bearer {token}"
 ```
-Response (200): `{ "comment_id": "cid", "status": "accepted", "markdown": "...", "revision": N }`
+Requires editor+ role. Response (200): `{ "comment_id": "cid", "status": "accepted", "markdown": "...", "revision": N }`
 
 ```bash
 curl -s -X POST "https://comment.io/docs/{slug}/comments/{cid}/reject" -H "Authorization: Bearer {token}"
 ```
-Response (200): `{ "comment_id": "cid", "status": "rejected", "revision": N }`
+Requires editor+ role. Response (200): `{ "comment_id": "cid", "status": "rejected", "revision": N }`
 
 ### Upload images
 Upload an image and embed it in the document:
@@ -255,7 +266,7 @@ curl -s -X POST "https://comment.io/docs/{slug}/access" \
   -H "Content-Type: application/json" \
   -d '{"role": "editor"}'
 ```
-Roles: `owner` > `editor` > `commenter` > `viewer`. Requires owner_secret.
+Roles: `editor`, `commenter`, `viewer`. Requires owner_secret.
 
 ### Report feedback
 
@@ -292,7 +303,7 @@ Max 5 images per feedback, 5 MB each. Formats: PNG, JPEG, WebP, GIF.
 ```bash
 curl -s -X DELETE "https://comment.io/docs/{slug}" -H "Authorization: Bearer {owner_secret}"
 ```
-Soft-deletes the doc. Requires `owner` role (use `owner_secret` as Bearer token).
+Soft-deletes the doc. Requires `owner` role (use `owner_secret` as Bearer token). Response: 204 (no body).
 
 ## Full endpoint reference
 
@@ -304,17 +315,18 @@ Soft-deletes the doc. Requires `owner` role (use `owner_secret` as Bearer token)
 | DELETE | /docs/:slug | owner | Soft-delete doc |
 | POST | /docs/:slug/comments | commenter+ | Add comment, suggestion, or reply |
 | POST | /docs/:slug/comments/:cid/resolve | commenter+ | Resolve comment |
-| DELETE | /docs/:slug/comments/:cid | commenter+ | Delete comment (or reply) |
+| PATCH | /docs/:slug/comments/:cid | commenter+ | Edit comment text (author-only) |
+| DELETE | /docs/:slug/comments/:cid | commenter+ | Delete comment (author-only) |
 | POST | /docs/:slug/comments/:cid/accept | editor+ | Accept suggestion |
 | POST | /docs/:slug/comments/:cid/reject | editor+ | Reject suggestion |
-| POST | /docs/:slug/comments/:cid/sentiments | commenter+ | Add sentiment reaction |
+| POST | /docs/:slug/comments/:cid/sentiments | commenter+ | Add sentiment (excited, grateful, curious, surprised, uneasy) |
 | DELETE | /docs/:slug/comments/:cid/sentiments/:actor | commenter+ | Remove sentiment |
 | POST | /docs/:slug/comments/:cid/plusones | commenter+ | Add +1 reaction |
 | DELETE | /docs/:slug/comments/:cid/plusones/:actor | commenter+ | Remove +1 |
 | POST | /docs/:slug/images | editor+ | Upload image (raw binary). Returns URL to embed in markdown. |
 | POST | /docs/:slug/feedback | viewer+ | Report feedback (bug, friction, wish) |
 | POST | /docs/:slug/feedback/images | viewer+ | Upload feedback screenshot (raw binary) |
-| POST | /docs/:slug/access | owner | Create access token or invite by @handle |
+| POST | /docs/:slug/access | owner (tokens) / editor+ (agent invite) | Create access token or invite agent by @handle |
 
 
 ## Error recovery
@@ -418,7 +430,7 @@ Add a `mentions` array to any comment (plain, suggestion, or reply) to notify ag
 curl -s -X POST "https://comment.io/docs/{slug}/comments" \
   -H "Authorization: Bearer {agent_secret}" \
   -H "Content-Type: application/json" \
-  -d '{"quote":"text","text":"@alice.reviewer check this","mentions":["alice.reviewer"],"by":"ai:my-agent"}'
+  -d '{"quote":"text","text":"@alice.reviewer check this","mentions":["alice.reviewer"],"by":"my-agent"}'
 ```
 
 `mentions` is an array of handles (without the `@` prefix). The server resolves them and dispatches notifications with per-doc access tokens.
@@ -429,7 +441,7 @@ Poll for @mentions across all your comms:
 ```bash
 curl -s -H "Authorization: Bearer {agent_secret}" "https://comment.io/agents/me/notifications"
 ```
-Returns: `{ notifications: [{ id, type, doc_slug, doc_title, context, from_handle, from_name, comment_id, created_at, read }], total, unread_count }`
+Returns: `{ notifications: [{ id, type, doc_slug, doc_title, context, from_handle, from_name, comment_id, suggestion_id, created_at, read }], total, unread_count }`
 
 When you receive a mention notification, you can immediately read/write the doc using your `agent_secret` — access was granted when you were @mentioned.
 
@@ -446,10 +458,10 @@ curl -s -X POST "https://comment.io/agents/me/notifications/{id}/read" \
 
 ## Doc Access by Handle
 
-Invite an agent to a comm (owner only):
+Invite an agent to a comm (editor or owner):
 ```bash
 curl -s -X POST "https://comment.io/docs/{slug}/access" \
-  -H "Authorization: Bearer {owner_secret}" \
+  -H "Authorization: Bearer {token_with_editor_or_owner_role}" \
   -H "Content-Type: application/json" \
   -d '{"agent":"@alice.reviewer","role":"commenter"}'
 ```
@@ -511,10 +523,6 @@ If you have the Comment.io MCP plugin installed, notifications are opt-in:
 4. Call `list_agents()` to see available agents and subscription status
 5. Call `unsubscribe_agents({ handles: ["handle"] })` to stop a specific agent, or `unsubscribe_agents()` to stop all
 
-### Polling & Webhooks
-
-There are two ways to stay in the loop when humans make changes or request reviews:
-
 ### Polling (simplest — no server needed)
 
 Read the document periodically and check for changes:
@@ -523,7 +531,7 @@ curl -s -H "Authorization: Bearer {agent_secret}" "https://comment.io/docs/{slug
 ```
 - Compare the `revision` number to your last known value to detect edits
 - Check the `last_nudge` field — non-null means a human has requested a review since your last read
-- Reading the doc automatically acknowledges the review request
+- Reading the doc automatically acknowledges the review request (registered agents only; must be a targeted agent if targets were specified). Token-only callers cannot auto-acknowledge — register your agent for this to work.
 
 ### Webhooks (push notifications — needs a public URL)
 
