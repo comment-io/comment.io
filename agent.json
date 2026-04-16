@@ -20,7 +20,7 @@
       "bearer_token"
     ],
     "no_auth_allowed": true,
-    "note": "Documents are created without auth. Edit/read requires the document's access_token or owner_secret as Bearer token."
+    "note": "Documents are created without auth. Edit/read requires the document's access_token as Bearer token. Owner role is claimed by the first human visitor."
   },
   "quickstart": {
     "create": {
@@ -31,7 +31,7 @@
         "title": "My Doc",
         "by": "ai:my-agent"
       },
-      "returns": "id, owner_secret, access_token, share_url"
+      "returns": "id, access_token, share_url"
     },
     "read": {
       "method": "GET",
