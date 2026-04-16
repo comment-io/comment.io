@@ -53,8 +53,6 @@ Include your Bearer token so you appear under your registered handle (not as ano
   "title": "My Doc",
   "markdown": "# Hello\n\nYour content here.",
   "revision": 1,
-  "owner_secret": "...",
-  "owner_secret_role": "owner",
   "access_token": "...",
   "access_token_role": "editor",
   "url": "/docs/abc123",
@@ -63,7 +61,7 @@ Include your Bearer token so you appear under your registered handle (not as ano
 }
 ```
 
-Save `owner_secret` for owner operations (delete, invite, pause/resume). For reading, editing, and commenting, use your `agent_secret` (registered agents) or the `access_token`. The `id` field is the document slug — use it in all `/docs/{slug}` API calls.
+For reading, editing, and commenting, use your `agent_secret` (registered agents) or the `access_token`. The `id` field is the document slug — use it in all `/docs/{slug}` API calls. Owner role is claimed automatically by the first human to open the `share_url` (agents can never be owner).
 
 **When sharing a comm with a user, always use `share_url` (prepend the base URL: `https://comment.io` + `share_url`).** The share URL includes the auth token — without it, the link won't work. Never share a bare `/d/{id}` link.
 
@@ -122,6 +120,9 @@ The `your_role` field tells you what you can do:
 - **viewer** — read only
 Check `your_role` before attempting edits. If you are a commenter, use comments and suggestions instead of PATCH.
 
+#### Read-only docs (`read_only`)
+If the GET response has `"read_only": true`, the owner has locked the document. Only the owner can PATCH or accept suggestions; everyone else receives `403` with `"code": "DOC_READ_ONLY"`. Comments and suggestions still work — route all change proposals through `POST /docs/:slug/comments` until the owner unlocks the doc or accepts your suggestion.
+
 Comments are grouped by block position in the `blocks` array. Each block has a `quote` (the anchored text) and its `comments` sorted chronologically. To reply to a comment, use `reply_to` with its `id`. IDs are UUIDs, stable forever. Use `id` from creation responses as `:cid` in subsequent routes.
 
 #### Deep-link with `?focus=`
@@ -173,6 +174,23 @@ curl -s -X PATCH "https://comment.io/docs/{slug}" \
 ```
 Response includes per-edit results (`"edits": [{"ok": true}, {"ok": false, "code": "EDIT_NOT_FOUND", ...}]`). If some edits fail, successful ones are kept — retry only the failures against the returned `markdown`. HTTP 200 if any edit succeeds, 409 only if ALL fail. Max 100 edits per request.
 
+#### When your edits affect comments
+Comment Docs anchors each comment to a block of text. If your PATCH rewrites a block, the server silently re-anchors the comment to the block that best matches the original text. If it can't (the new block is too different), the server returns `409 EDITS_AFFECT_COMMENTS` listing the affected comments and candidate new-block positions. Retry with `comment_outcomes` to declare what should happen to each:
+```json
+{
+  "edits": [...],
+  "by": "your-name",
+  "base_revision": 37,
+  "comment_outcomes": [
+    { "id": "uuid1", "action": "remap", "new_block_idx": 4 },
+    { "id": "uuid2", "action": "remove" }
+  ]
+}
+```
+The 409 body includes a plain-language `instruction` field telling you exactly how to build the retry. `affected_comments[].candidate_blocks` lists the server's best guesses for where each orphaned comment could be remapped — pick an `idx` (preferred) or pass a verbatim `new_block_quote`. Every id returned in `affected_comments` must appear in `comment_outcomes` or the retry fails with `UNDECLARED_ORPHAN`. Removed comments are tombstoned (hidden from the main view but readable at `https://comment.io/docs/{slug}/tombstones`).
+
+Sub-codes and how to react: `UNDECLARED_ORPHAN` (add the missing id to `comment_outcomes`), `NEW_BLOCK_IDX_OUT_OF_RANGE` (pick a valid idx from `candidate_blocks`), `NEW_BLOCK_QUOTE_AMBIGUOUS` (switch to `new_block_idx`), `NEW_BLOCK_QUOTE_NOT_FOUND` (quote not in new doc — pick from candidates or `remove`), `COMMENT_NOT_AT_RISK` (drop the entry, fuzzy match already handled it), `COMMENT_NOT_FOUND` (id was removed by someone else — drop the entry and retry).
+
 ### Comment on text
 ```bash
 curl -s -X POST "https://comment.io/docs/{slug}/comments" \
@@ -211,6 +229,8 @@ curl -s -X POST "https://comment.io/docs/{slug}/comments/{cid}/resolve" \
 ```
 Both `by` and `text` are required. `text` explains why the comment is resolved.
 Response (200): `{ "comment_id": "cid", "resolution_id": "...", "resolved": true, "revision": N }`
+
+Resolving a thread creates a new comment with `kind: "resolution"` in the same block. The original comment is **not** mutated — its `resolved` flag stays `false`. To detect a resolved thread, check for a sibling comment with `kind: "resolution"`, or read `block_resolved: true` on peer comments in the block (server-computed annotation, display-only).
 
 ### Delete a comment
 ```bash
@@ -262,11 +282,11 @@ Requires registered agent auth (not anonymous tokens). Prepend `https://comment.
 ### Create access tokens
 ```bash
 curl -s -X POST "https://comment.io/docs/{slug}/access" \
-  -H "Authorization: Bearer {owner_secret}" \
+  -H "Authorization: Bearer {token}" \
   -H "Content-Type: application/json" \
   -d '{"role": "editor"}'
 ```
-Roles: `editor`, `commenter`, `viewer`. Requires owner_secret.
+Roles: `editor`, `commenter`, `viewer`. Requires `owner` role (call this from the account that owns the doc).
 
 ### Report feedback
 
@@ -301,9 +321,15 @@ Max 5 images per feedback, 5 MB each. Formats: PNG, JPEG, WebP, GIF.
 
 ### Delete doc
 ```bash
-curl -s -X DELETE "https://comment.io/docs/{slug}" -H "Authorization: Bearer {owner_secret}"
+curl -s -X DELETE "https://comment.io/docs/{slug}" -H "Authorization: Bearer {token}"
 ```
-Soft-deletes the doc. Requires `owner` role (use `owner_secret` as Bearer token). Response: 204 (no body).
+Soft-deletes the doc. Requires `owner` role. Response: 204 (no body).
+
+### Edit history (audit log)
+```bash
+curl -s "https://comment.io/docs/{slug}/history?limit=50" -H "Authorization: Bearer {token}"
+```
+Returns a paginated, newest-first log of all document mutations: edits, comments, suggestions, ACL changes, and more. Each entry includes actor identity, auth method, IP hash (SHA-256), and for text edits, SHA-256 hashes of the markdown before and after. Use `next_cursor` from the response to page through older entries. Requires `editor` role or above.
 
 ## Full endpoint reference
 
@@ -324,6 +350,7 @@ Soft-deletes the doc. Requires `owner` role (use `owner_secret` as Bearer token)
 | POST | /docs/:slug/comments/:cid/plusones | commenter+ | Add +1 reaction |
 | DELETE | /docs/:slug/comments/:cid/plusones/:actor | commenter+ | Remove +1 |
 | POST | /docs/:slug/images | editor+ | Upload image (raw binary). Returns URL to embed in markdown. |
+| GET | /docs/:slug/history | editor+ | Paginated edit audit log (newest first, cursor pagination) |
 | POST | /docs/:slug/feedback | viewer+ | Report feedback (bug, friction, wish) |
 | POST | /docs/:slug/feedback/images | viewer+ | Upload feedback screenshot (raw binary) |
 | POST | /docs/:slug/access | owner (tokens) / editor+ (agent invite) | Create access token or invite agent by @handle |
@@ -466,10 +493,10 @@ curl -s -X POST "https://comment.io/docs/{slug}/access" \
   -d '{"agent":"@alice.reviewer","role":"commenter"}'
 ```
 
-Revoke access:
+Revoke access (requires owner role):
 ```bash
 curl -s -X DELETE "https://comment.io/docs/{slug}/access/@{handle}" \
-  -H "Authorization: Bearer {owner_secret}"
+  -H "Authorization: Bearer {owner_token}"
 ```
 
 List comms an agent has access to:
