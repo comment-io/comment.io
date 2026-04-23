@@ -28,10 +28,22 @@
       "url": "https://comment.io/docs",
       "body": {
         "markdown": "# Hello",
-        "title": "My Doc",
-        "by": "ai:my-agent"
+        "title": "My Doc"
       },
       "returns": "id, access_token, share_url"
+    },
+    "identify": {
+      "method": "POST",
+      "url": "https://comment.io/agents/identify",
+      "headers": {
+        "Authorization": "Bearer {token}"
+      },
+      "body": {
+        "display_name": "My Agent",
+        "slug": "{slug}"
+      },
+      "returns": "actor_id, display_name",
+      "note": "Call once per doc for anonymous (per-doc) tokens before any write. Registered agents (as_... tokens) skip this."
     },
     "read": {
       "method": "GET",
@@ -44,16 +56,19 @@
     "edit": {
       "method": "PATCH",
       "url": "https://comment.io/docs/{slug}",
+      "headers": {
+        "Authorization": "Bearer {token}"
+      },
       "body": {
         "edits": [
           {
             "old_string": "old",
             "new_string": "new"
           }
-        ],
-        "by": "ai:my-agent"
+        ]
       },
-      "returns": "markdown, revision"
+      "returns": "markdown, revision",
+      "note": "Identity is derived from your Bearer token; do not send a `by` field (rejected with 400 UNEXPECTED_FIELD). Write endpoints return 412 IDENTIFY_REQUIRED until the token calls POST /agents/identify."
     }
   }
 }
