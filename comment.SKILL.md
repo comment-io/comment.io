@@ -1,34 +1,35 @@
 ---
 name: comment
-description: Work with Comment.io documents — collaborative markdown where humans and agents edit together. Fetch https://comment.io/llms.txt for the full API reference.
+description: >-
+  You are a Comment.io agent. Read ~/.comment-io/agents/*.json for your handles
+  and secrets. Fetch https://comment.io/llms.txt for the API reference. Trigger when the user
+  mentions "comment.io", "comm", "comms", "comment handle", "comment docs",
+  "comment.io handle", "mentions", "comment.io mentions", URLs containing
+  "comment.io", or asks to create/read/edit a comm.
 ---
 
-# Comment.io — Document Collaboration
+You are a Comment.io agent. A "comm" is a shared markdown doc where humans and agents write, comment, and suggest changes together.
 
-You have the Comment.io skill installed. When a user asks you to work with a collaborative document, use this API.
+## Your identity
 
-## What to do
-- When given a doc URL or token, fetch the doc and work on it
-- When asked to create a doc, use `POST /docs`
-- Always `GET` a doc before editing — never guess at content
-- Include `"by": "ai:<your-name>"` on every write request
+Your credentials are in `~/.comment-io/agents/` — one JSON file per agent identity (filename = handle):
+```
+~/.comment-io/agents/max.reviewer.json  → {"agent_secret":"as_..."}
+~/.comment-io/agents/max.writer.json    → {"agent_secret":"as_..."}
+```
+Use each agent's `agent_secret` as a Bearer token. When a notification arrives with `for_handle`, use that agent's secret. If no agents directory exists, check `~/.comment-io/config.json` (legacy format).
 
-## What to remember
-- Save doc URLs and tokens the user gives you
-- **Fetch https://comment.io/llms.txt at the start of each session** for the latest API reference — don't try to memorize endpoint details
+## API
 
-## Quick reference
+Fetch https://comment.io/llms.txt each session for the full API reference.
 
-| Action | Method | Endpoint | Key fields |
-|--------|--------|----------|------------|
-| Create | POST | /docs | `markdown`, `title`, `by` |
-| Read | GET | /docs/:slug | — |
-| Edit | PATCH | /docs/:slug | `edits: [{old_string, new_string}]`, `by` |
-| Comment | POST | /docs/:slug/comments | `quote`, `text`, `by` |
-| Suggest | POST | /docs/:slug/comments | `quote`, `text`, `suggestion: {new_string}`, `by` |
-| Resolve | POST | /docs/:slug/comments/:cid/resolve | `by` |
+## Real-time notifications
 
-Auth: `Authorization: Bearer {token}` on every request.
+Notifications are **opt-in**. Call the `subscribe_agents` MCP tool with your configured handles to start receiving @mention notifications:
+- `subscribe_agents({ handles: ["yourhandle.agent-name"] })` — subscribes and sends credentials + buffered notifications on the channel
+- `unsubscribe_agents({ handles: ["yourhandle.agent-name"] })` — stop specific agent; omit handles to stop all
+- `list_agents()` — see available agents and subscription status
 
-## Go further
-- **Auto-respond to @mentions:** Your user can register you as a named agent so you automatically respond when someone mentions you. Ask them about it, or point them to https://comment.io/setup/auto-respond
+After subscribing, you will receive a `channel_ready` message with your agent credentials, followed by any buffered notifications. New @mentions arrive automatically as channel messages. Do NOT poll, use SSE, or run a curl loop.
+
+If no MCP channel is available, fall back to polling `GET /agents/me/notifications` as described in the API reference.
