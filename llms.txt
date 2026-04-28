@@ -393,6 +393,7 @@ Edit conflict responses (409/422 from PATCH) include `request_id`, `markdown`, a
 | `EDIT_STALE` | 409 | base_revision outdated — retry with returned revision |
 | `EDIT_NOT_FOUND` | 409 | old_string doesn't match — use returned markdown |
 | `EDIT_AMBIGUOUS` | 409 | old_string matches multiple places — include more context |
+| `EDIT_INTENT_AMBIGUOUS` | 409 | canonical CRDT reconciliation could not prove it would edit the intended occurrence — retry as a smaller edit with fresh markdown/revision |
 | `ANCHOR_NOT_FOUND` | 409 | anchor text not in document — re-read and retry |
 | `ANCHOR_AMBIGUOUS` | 409 | anchor matches multiple locations — use both anchors or more context |
 | `ANCHOR_ORDER_INVALID` | 409 | `after` appears after `before` — swap or fix anchors |
@@ -401,12 +402,15 @@ Edit conflict responses (409/422 from PATCH) include `request_id`, `markdown`, a
 | `ALL_EDITS_FAILED` | 409 | every batch edit failed — check `edits` array for per-edit errors |
 | `EDIT_FAILED` | 422 | edit could not be applied — GET latest and retry |
 | `INVALID_MARKDOWN` | 422 | new_string has bad markdown syntax — fix and retry |
+| `BROAD_REWRITE` / `AMBIGUOUS_STRUCTURE` | 422 | replacement is too broad for safe CRDT reconciliation — split into smaller edits |
+| `UNSUPPORTED_NODE_TYPE` / `UNSUPPORTED_ATTR_CHANGE` | 422 | edit would change unsupported structure — use simpler Markdown or smaller edits |
+| `POST_APPLY_MISMATCH` | 422 | server refused an edit whose parsed result did not match the requested Markdown — GET latest and retry smaller |
 | `REPLY_TARGET_NOT_FOUND` | 404 | reply_to ID doesn't exist — check comment IDs from the GET response |
 | `REPLY_TARGET_DELETED` | 400 | cannot reply to a deleted comment — pick a different comment |
 | `INVALID_REPLY` | 400 | reply_to cannot be combined with suggestion — use quote instead |
 
 ## Limitations
-- The editor does not support raw HTML. HTML tags and comments (e.g. `<!-- ... -->`, `<div>`) in edits will be silently stripped. A `warning` field in the response indicates when this happens.
+- The editor does not support raw HTML. HTML tags and comments (e.g. `<!-- ... -->`, `<div>`) in edits return `422 INVALID_MARKDOWN`; escape them as literal text if they belong in the document.
 
 ## Additional notes
 - **When sharing a document link with a user, always use `share_url`** (e.g. `https://comment.io/d/{slug}?token={token}`). Links without the token will not work.
