@@ -51,6 +51,21 @@ Same `old_string`/`new_string` model that Claude Code, Cursor, and every coding 
 
 See the [integrations/](integrations/) directory for setup guides.
 
+## Local read-only sync
+
+CommentFS can project selected Comment.io docs into local markdown files for
+search, context, and agent inspection. Generate a CommentFS key in settings,
+enable **Sync locally** on a document, then run:
+
+```bash
+comment sync login --api-key <usk_...>
+comment sync
+comment sync watch
+```
+
+The local markdown files are read-only projections. Edit through the Comment.io
+UI or API so comments, suggestions, provenance, and permissions stay canonical.
+
 ## Documentation
 
 |                                                                                      |                                                  |
