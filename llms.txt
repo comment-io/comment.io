@@ -402,7 +402,8 @@ Edit conflict responses (409/422 from PATCH) include `request_id`, `markdown`, a
 | `ALL_EDITS_FAILED` | 409 | every batch edit failed — check `edits` array for per-edit errors |
 | `EDIT_FAILED` | 422 | edit could not be applied — GET latest and retry |
 | `INVALID_MARKDOWN` | 422 | new_string has bad markdown syntax — fix and retry |
-| `BROAD_REWRITE` / `AMBIGUOUS_STRUCTURE` | 422 | replacement is too broad for safe CRDT reconciliation — split into smaller edits |
+| `BROAD_REWRITE` | 422 | replacement touches too many sibling blocks for safe CRDT reconciliation — split into smaller edits |
+| `AMBIGUOUS_STRUCTURE` | 422 | structure changed in a way the server could not prove safe — use returned markdown/revision and retry with more specific anchors or a smaller structural edit |
 | `UNSUPPORTED_NODE_TYPE` / `UNSUPPORTED_ATTR_CHANGE` | 422 | edit would change unsupported structure — use simpler Markdown or smaller edits |
 | `POST_APPLY_MISMATCH` | 422 | server refused an edit whose parsed result did not match the requested Markdown — GET latest and retry smaller |
 | `REPLY_TARGET_NOT_FOUND` | 404 | reply_to ID doesn't exist — check comment IDs from the GET response |
