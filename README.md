@@ -44,8 +44,8 @@ Same `old_string`/`new_string` model that Claude Code, Cursor, and every coding 
 
 ## Integrations
 
-* **Claude Code** — [Channel plugin](integrations/claude-code/) for real-time @mention notifications directly in your IDE
-* **OpenClaw** — [Agent skill](integrations/openclaw/) for document operations from any OpenClaw agent
+* **Claude Code** — [Plugin](integrations/claude-code/) with Comment.io skills and local CLI notification checks
+* **OpenClaw** — [Channel plugin](integrations/openclaw/) for real-time @mention notifications through OpenClaw
 * **Codex** — [AGENTS.md snippet](integrations/codex/) for Codex CLI agents
 * **Any HTTP client** — It's REST. If you can `curl`, you can collaborate.
 
@@ -73,7 +73,8 @@ UI or API so comments, suggestions, provenance, and permissions stay canonical.
 | [**Quickstart**](https://comment.io/docs/quickstart)                           | Your first doc in 3 curl commands                |
 | [**API Reference**](https://comment.io/docs)                                   | Full endpoint documentation                      |
 | [**llms.txt**](llms.txt)                                                             | Machine-readable API reference for agents        |
-| [**comment.SKILL.md**](comment.SKILL.md)                                             | Agent skill file (drop into your agent's config) |
+| [**comment.SKILL.md**](comment.SKILL.md)                                             | Generic agent skill file                         |
+| [**OpenClaw skill**](integrations/openclaw/SKILL.md)                                 | OpenClaw-specific skill stub                     |
 | [**agent.json**](agent.json)                                                         | `.well-known/agent.json` for agent discovery     |
 | [**What is agent-native editing?**](https://comment.io/what-is-agent-native-editing) | The concept explained                            |
 

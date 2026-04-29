@@ -1,23 +1,34 @@
 # Comment.io for OpenClaw
 
-**Tier 2** — Install the Comment.io skill so your OpenClaw agent can create, read, edit, comment, and suggest on documents in any conversation.
+Use the official OpenClaw channel plugin for Comment.io. The plugin supplies API guidance and delivers @mention notifications through the `comment-io` channel.
 
-## Install
+## Install Channel Plugin
+
+```bash
+openclaw plugins install @comment-io/openclaw-plugin
+openclaw channels add --channel comment-io --account my-agent --token 'as_ag_...'
+openclaw agents bind --agent my-agent --bind comment-io:my-agent
+openclaw gateway restart
+```
+
+- Register an agent at [comment.io/setup?platform=openclaw](https://comment.io/setup?platform=openclaw) to get the `as_ag_...` token.
+- The channel plugin owns notification delivery. OpenClaw agents do not need to run manual notification waits.
+- Channel replies are discarded; agents should use the Comment.io REST API to read, edit, comment, and suggest.
+
+## Optional Skill
+
+For persistent API guidance without configuring a channel account, install the OpenClaw-specific skill:
 
 ```bash
 mkdir -p ~/.openclaw/skills/comment
-curl -s https://raw.githubusercontent.com/comment-io/comment.io/main/comment.SKILL.md \
-  > ~/.openclaw/skills/comment/SKILL.md
+curl -fsSL https://raw.githubusercontent.com/comment-io/comment.io/main/integrations/openclaw/SKILL.md \
+  -o ~/.openclaw/skills/comment/SKILL.md
 ```
 
-Or use the one-click setup: **[comment.io/install](https://comment.io/install)**
-
-## Want auto-respond?
-
-To have your agent react to @mentions and review requests automatically (**Tier 3**), see the [Agent Loop guide](https://comment.io/docs/agent-loop#tier-3).
+This skill points OpenClaw at the channel plugin for notifications instead of the generic CLI wait flow.
 
 ## Reference
 
-- [comment.SKILL.md](../../comment.SKILL.md) — machine-readable API reference
-- [llms.txt](../../llms.txt) — full API documentation
-- [comment.io/docs](https://comment.io/docs) — developer docs
+- [OpenClaw plugin](https://www.npmjs.com/package/@comment-io/openclaw-plugin)
+- [llms.txt](../../llms.txt) - full API documentation
+- [comment.io/setup](https://comment.io/setup?platform=openclaw) - registered channel setup

@@ -1,22 +1,37 @@
-# Comment.io Channel Plugin for Claude Code
+# Comment.io Plugin for Claude Code
 
-**Tier 3** — A Claude Code channel plugin that delivers @mention notifications in real-time. When someone mentions your agent in a document, Claude Code receives the notification and can read, edit, comment, and reply — all from within the IDE.
+The Claude Code plugin installs Comment.io skills so Claude can create comms, read shared docs, comment, suggest edits, and use registered agent credentials from `~/.comment-io/agents/`.
 
-This is the full reactive loop: your agent stays engaged without you having to copy-paste anything.
+For now, notification delivery in Claude Code uses the local Comment.io CLI. The plugin does not push unsolicited notifications into Claude Code.
 
 ## Setup
 
-See **[comment.io/setup/auto-respond](https://comment.io/setup/auto-respond)** for step-by-step instructions, or read the [Agent Loop guide](https://comment.io/docs/agent-loop#tier-3) for background.
+```bash
+claude plugin marketplace add comment-io/claude-code-plugin
+claude plugin install comment-io@comment-io-plugins
+```
 
-## Source
+For registered agents, use [comment.io/setup](https://comment.io/setup?platform=claude-code) to create the profile file and start the local daemon.
 
-The full channel plugin with marketplace packaging is at [**comment-io/claude-code-plugin**](https://github.com/comment-io/claude-code-plugin).
+## Check Notifications
 
-A copy of the main entrypoint is also included here as [`comment-io.ts`](comment-io.ts).
+Ask Claude to run:
 
-## Just need basic API access?
+```bash
+comment notifications wait --profile yourhandle.my-agent --timeout 30m
+```
 
-If you don't need auto-respond and just want Claude Code to know the API, install the skill instead (**Tier 2**): **[comment.io/install](https://comment.io/install)**
+The command returns a leased notification envelope with `claim_id`, `notification`, `untrusted_context`, and `instructions`. After Claude reads the doc and responds through the REST API, it should run:
+
+```bash
+comment notifications ack {claim_id}
+```
+
+If it cannot handle the notification, it should run:
+
+```bash
+comment notifications release {claim_id}
+```
 
 ## Reference
 
