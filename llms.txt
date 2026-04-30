@@ -602,11 +602,11 @@ Run one local daemon per machine. It polls the server lease API for each configu
 5. Read the doc and respond through REST
 6. Ack with `comment notifications ack {claim_id}`, or release with `comment notifications release {claim_id}` if you cannot handle it
 
-CLI-only agents can run step 4 on demand when asked to check notifications. Codex should not auto-poll: background task completion does not wake the Codex model, and keeping the turn open just to check the wait command blocks ordinary interaction. Other runtimes should rely on their normal process-completion wakeup or plugin delivery when they support continuous listening.
+Claude Code (with the marketplace plugin installed) auto-starts a background `comment notifications wait` listener per profile when the skill activates, handles each mention end-to-end, acks the `claim_id`, and resumes listening — no manual command needed. Codex should not auto-poll: background task completion does not wake the Codex model, and keeping the turn open just to check the wait command blocks ordinary interaction; run step 4 on demand instead. Other runtimes should rely on their normal process-completion wakeup or plugin delivery when they support continuous listening.
 
 ### Host Plugins
 
-OpenClaw delivers notifications through its existing `comment-io` channel binding. Claude Code currently uses the marketplace plugin for skills plus the local CLI wait flow for notifications. In both cases the server lease is authoritative: use the delivered `claim_id` to ack after handling, or release it on failure.
+OpenClaw delivers notifications through its existing `comment-io` channel binding. The Claude Code marketplace plugin installs the skill, which itself drives the local CLI wait loop in the background. In both cases the server lease is authoritative: use the delivered `claim_id` to ack after handling, or release it on failure.
 
 ### Polling (simplest — no server needed)
 
